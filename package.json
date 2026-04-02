@@ -1,0 +1,20 @@
+{
+  "name": "motoroom",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "mobile": "npm --prefix apps/mobile run start",
+    "ios": "npm --prefix apps/mobile run ios",
+    "android": "npm --prefix apps/mobile run android",
+    "backend": "npm --prefix apps/backend run dev",
+    "docker:up": "docker compose up --build",
+    "docker:up:detached": "docker compose up -d --build",
+    "docker:down": "docker compose down",
+    "docker:logs": "docker compose logs -f backend",
+    "dev:mobile": "npm run docker:up:detached && npm run mobile",
+    "dev:ios": "npm run docker:up:detached && npm run ios",
+    "dev:android": "npm run docker:up:detached && npm run android",
+    "testflight:ios": "npm --prefix apps/mobile run testflight:ios",
+    "typecheck": "npm --prefix apps/mobile run typecheck && npm --prefix apps/backend run typecheck"
+  }
+}

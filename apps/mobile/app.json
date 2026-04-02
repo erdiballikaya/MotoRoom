@@ -1,0 +1,44 @@
+{
+  "expo": {
+    "owner": "erdiballikaya",
+    "name": "MotoRoom",
+    "slug": "motoroom",
+    "description": "MotoRoom, motosiklet kullanicilarini marka ve model bazli odalarda bir araya getiren mobil topluluk uygulamasi.",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "light",
+    "newArchEnabled": false,
+    "scheme": "motoroom",
+    "splash": {
+      "image": "./assets/splash-icon.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#f6efe3"
+    },
+    "ios": {
+      "bundleIdentifier": "com.erdiballikaya.motoroom",
+      "supportsTablet": true,
+      "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false
+      }
+    },
+    "android": {
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#f6efe3"
+      }
+    },
+    "web": {
+      "favicon": "./assets/favicon.png"
+    },
+    "plugins": [
+      "expo-asset",
+      "expo-font"
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "4bc1d782-351b-465d-a0db-2e25f3b0d495"
+      }
+    }
+  }
+}
