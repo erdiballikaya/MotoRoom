@@ -102,24 +102,26 @@ Root dizinde hazir bir [render.yaml](/Volumes/KIOXIA/MotoRoom/render.yaml) var. 
 
 Servis ayarlari:
 
+- Runtime: `Docker`
 - Root directory: `apps/backend`
-- Build command: `npm install`
-- Start command: `npm run start`
+- Dockerfile path: `./Dockerfile`
 - Health check path: `/health`
 
 Gerekli env degiskenleri:
 
 ```env
 JWT_SECRET=super-secret-value
-MONGODB_URI=mongodb+srv://...
 GOOGLE_AUTH_CLIENT_IDS=google-client-id-1,google-client-id-2
 APPLE_AUTH_AUDIENCES=com.erdiballikaya.motoroom
+MONGODB_DATA_PATH=/data/db
 ```
 
 Notlar:
 
 - `PORT` degerini Render otomatik verir; backend bunu zaten kullanir.
-- Render tarafinda MongoDB yoksa `MONGODB_URI` icin Mongo Atlas gibi dis bir Mongo kullan.
+- `MONGODB_URI` bos birakilirsa container kendi icinde lokal MongoDB baslatir ve backend buna `mongodb://127.0.0.1:27017/motoroom` ile baglanir.
+- Render free instance yeniden basladiginda container ici Mongo verisi kalici olmaz. Kalici veri istiyorsan persistent disk bagla ve `MONGODB_DATA_PATH=/data/db` kullan.
+- Dis bir Mongo kullanmak istersen `MONGODB_URI` verip container ici Mongo baslangicini bypass edebilirsin.
 - Render URL'si hazir olunca mobile tarafinda `EXPO_PUBLIC_API_URL` degerini bu URL ile guncelleyip yeni build al.
 
 API uçları:

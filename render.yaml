@@ -1,19 +1,17 @@
 services:
   - type: web
     name: motoroom-backend
-    runtime: node
+    runtime: docker
+    plan: free
     rootDir: apps/backend
-    buildCommand: npm install
-    startCommand: npm run start
+    dockerfilePath: ./Dockerfile
     healthCheckPath: /health
     envVars:
-      - key: NODE_VERSION
-        value: 22.14.0
       - key: JWT_SECRET
-        sync: false
-      - key: MONGODB_URI
         sync: false
       - key: GOOGLE_AUTH_CLIENT_IDS
         sync: false
       - key: APPLE_AUTH_AUDIENCES
         value: com.erdiballikaya.motoroom
+      - key: MONGODB_DATA_PATH
+        value: /data/db
