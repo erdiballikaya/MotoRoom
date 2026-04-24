@@ -19,21 +19,8 @@ type AuthScreenProps = {
   onSubmit: () => void;
 };
 
-const AuthTab = ({
-  label,
-  selected,
-  onPress
-}: {
-  label: string;
-  selected: boolean;
-  onPress: () => void;
-}) => (
-  <Pressable onPress={onPress} style={({ pressed }) => [styles.tabButton, selected && styles.tabButtonActive, pressed && styles.pressed]}>
-    <Text style={[styles.tabButtonText, selected && styles.tabButtonTextActive]}>{label}</Text>
-  </Pressable>
-);
-
 const AuthField = ({
+  icon,
   label,
   placeholder,
   value,
@@ -41,6 +28,7 @@ const AuthField = ({
   keyboardType,
   onChangeText
 }: {
+  icon: keyof typeof Ionicons.glyphMap;
   label: string;
   placeholder: string;
   value: string;
@@ -50,17 +38,21 @@ const AuthField = ({
 }) => (
   <View style={styles.fieldWrap}>
     <Text style={styles.fieldLabel}>{label}</Text>
-    <TextInput
-      autoCapitalize={keyboardType === 'email-address' ? 'none' : 'words'}
-      autoCorrect={false}
-      keyboardType={keyboardType}
-      onChangeText={onChangeText}
-      placeholder={placeholder}
-      placeholderTextColor="#8A7D70"
-      secureTextEntry={secureTextEntry}
-      style={styles.fieldInput}
-      value={value}
-    />
+    <View style={styles.fieldFrame}>
+      <Ionicons name={icon} size={24} color={theme.colors.accentSoft} />
+      <TextInput
+        autoCapitalize={keyboardType === 'email-address' ? 'none' : 'words'}
+        autoCorrect={false}
+        keyboardType={keyboardType}
+        onChangeText={onChangeText}
+        placeholder={placeholder}
+        placeholderTextColor={theme.colors.subtle}
+        secureTextEntry={secureTextEntry}
+        style={styles.fieldInput}
+        value={value}
+      />
+      {secureTextEntry ? <Ionicons name="eye" size={24} color={theme.colors.accentSoft} /> : null}
+    </View>
   </View>
 );
 
@@ -80,36 +72,29 @@ export const AuthScreen = ({
 
   return (
     <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
-      <View style={styles.heroCard}>
-        <View style={styles.heroOrbLarge} />
-        <View style={styles.heroOrbSmall} />
-        <View style={styles.logoWrap}>
-          <Image source={appLogo} style={styles.logoImage} />
-        </View>
-        <Text style={styles.eyebrow}>MotoRoom Membership</Text>
-        <Text style={styles.heroTitle}>Önce giriş yap, sonra model odalarına geç.</Text>
-        <Text style={styles.heroBody}>
-          Kayıtlı üyeler sohbet geçmişini görür, sorular sorar ve yaz buluşmalarına katılır.
-        </Text>
+      <View style={styles.wordmarkBlock}>
+        <Image source={appLogo} style={styles.logoImage} />
+        <Text style={styles.wordmark}>MOTOROOM</Text>
+        <Text style={styles.tagline}>HASSASİYET. HIZ. TOPLULUK.</Text>
       </View>
 
       <View style={styles.card}>
-        <View style={styles.tabRow}>
-          <AuthTab label="Giriş yap" onPress={() => onModeChange('login')} selected={!registerMode} />
-          <AuthTab label="Kayıt ol" onPress={() => onModeChange('register')} selected={registerMode} />
-        </View>
+        <Text style={styles.cardTitle}>{registerMode ? 'FİLOYA KATIL' : 'TEKRAR HOŞ GELDİN'}</Text>
+        <View style={styles.titleRule} />
 
         {registerMode ? (
           <>
             <AuthField
-              label="Ad soyad"
-              placeholder="Adını gir"
+              icon="person"
+              label="SÜRÜCÜ ADI"
+              placeholder="AD SOYAD"
               value={displayName}
               onChangeText={(value) => onFieldChange('displayName', value)}
             />
             <AuthField
-              label="Şehir"
-              placeholder="Örn. Kadıköy"
+              icon="location"
+              label="ANA GARAJ"
+              placeholder="ŞEHİR"
               value={city}
               onChangeText={(value) => onFieldChange('city', value)}
             />
@@ -117,15 +102,17 @@ export const AuthScreen = ({
         ) : null}
 
         <AuthField
+          icon="at"
           keyboardType="email-address"
-          label="E-posta"
-          placeholder="ornek@mail.com"
+          label="OPERATÖR ID / E-POSTA"
+          placeholder="AD@ALANADI.COM"
           value={email}
           onChangeText={(value) => onFieldChange('email', value)}
         />
         <AuthField
-          label="Şifre"
-          placeholder="En az 6 karakter"
+          icon="lock-closed"
+          label="GÜVENLİK ANAHTARI"
+          placeholder="••••••••"
           secureTextEntry
           value={password}
           onChangeText={(value) => onFieldChange('password', value)}
@@ -133,18 +120,41 @@ export const AuthScreen = ({
 
         {error ? <Text style={styles.errorText}>{error}</Text> : null}
 
-        <Pressable onPress={onSubmit} style={({ pressed }) => [styles.primaryButton, pressed && styles.pressed, loading && styles.buttonDisabled]}>
+        <Pressable
+          disabled={loading}
+          onPress={onSubmit}
+          style={({ pressed }) => [styles.primaryButton, loading && styles.buttonDisabled, pressed && styles.pressed]}
+        >
           {loading ? (
-            <ActivityIndicator color={theme.colors.card} />
+            <ActivityIndicator color={theme.colors.black} />
           ) : (
-            <Text style={styles.primaryButtonText}>{registerMode ? 'Hesap oluştur' : 'Giriş yap'}</Text>
+            <Text style={styles.primaryButtonText}>{registerMode ? 'GARAJ OLUŞTUR' : 'GİRİŞİ BAŞLAT'}</Text>
           )}
         </Pressable>
 
-        <View style={styles.noticeBox}>
-          <Ionicons name="information-circle-outline" size={18} color={theme.colors.ink} />
-          <Text style={styles.noticeText}>Bu TestFlight yapısında sosyal giriş geçici olarak kapatıldı.</Text>
+        <View style={styles.dividerRow}>
+          <View style={styles.divider} />
+          <Text style={styles.dividerText}>DIŞ HESAP</Text>
+          <View style={styles.divider} />
         </View>
+
+        <View style={styles.externalRow}>
+          <View style={styles.externalButton}>
+            <Ionicons name="logo-google" size={24} color={theme.colors.ink} />
+            <Text style={styles.externalText}>GOOGLE</Text>
+          </View>
+          <View style={styles.externalButton}>
+            <Ionicons name="logo-apple" size={26} color={theme.colors.ink} />
+            <Text style={styles.externalText}>APPLE</Text>
+          </View>
+        </View>
+      </View>
+
+      <View style={styles.modeSwitch}>
+        <Text style={styles.modeCopy}>{registerMode ? 'Garajda hesabın var mı?' : 'Garaja yeni mi geldin?'}</Text>
+        <Pressable onPress={() => onModeChange(registerMode ? 'login' : 'register')} style={styles.modeLink}>
+          <Text style={styles.modeLinkText}>{registerMode ? 'GİRİŞİ BAŞLAT' : 'FİLOYA KATIL'}</Text>
+        </Pressable>
       </View>
     </ScrollView>
   );
@@ -152,161 +162,165 @@ export const AuthScreen = ({
 
 const styles = StyleSheet.create({
   scrollContent: {
-    paddingHorizontal: 22,
-    paddingBottom: 40
+    minHeight: '100%',
+    paddingHorizontal: 20,
+    paddingTop: 88,
+    paddingBottom: 42,
+    backgroundColor: theme.colors.background
   },
-  heroCard: {
-    backgroundColor: '#22160E',
-    borderRadius: theme.radius.lg,
-    padding: 22,
-    overflow: 'hidden',
-    marginBottom: 18
-  },
-  heroOrbLarge: {
-    position: 'absolute',
-    width: 190,
-    height: 190,
-    borderRadius: 190,
-    top: -40,
-    right: -50,
-    backgroundColor: '#F26A1B'
-  },
-  heroOrbSmall: {
-    position: 'absolute',
-    width: 110,
-    height: 110,
-    borderRadius: 110,
-    bottom: -32,
-    right: 88,
-    backgroundColor: '#135D52'
-  },
-  logoWrap: {
-    width: 68,
-    height: 68,
-    borderRadius: 22,
-    backgroundColor: 'rgba(255, 255, 255, 0.14)',
-    borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.18)',
+  wordmarkBlock: {
     alignItems: 'center',
-    justifyContent: 'center'
+    marginBottom: 44
   },
   logoImage: {
-    width: 46,
-    height: 46,
-    borderRadius: 14
-  },
-  eyebrow: {
-    color: '#F7C18A',
-    fontSize: 12,
-    fontWeight: '800',
-    letterSpacing: 1
-  },
-  heroTitle: {
-    color: theme.colors.card,
-    fontSize: 30,
-    lineHeight: 36,
-    fontWeight: '900',
-    marginTop: 10,
-    maxWidth: '80%'
-  },
-  heroBody: {
-    color: '#E8DCCF',
-    fontSize: 15,
-    lineHeight: 22,
-    marginTop: 14,
-    maxWidth: '82%'
-  },
-  card: {
-    backgroundColor: theme.colors.card,
-    borderRadius: theme.radius.lg,
+    width: 40,
+    height: 40,
+    marginBottom: 18,
     borderWidth: 1,
-    borderColor: theme.colors.border,
-    padding: 20
+    borderColor: theme.colors.border
   },
-  tabRow: {
-    flexDirection: 'row',
-    backgroundColor: theme.colors.surface,
-    borderRadius: theme.radius.pill,
-    padding: 4,
-    marginBottom: 20
-  },
-  tabButton: {
-    flex: 1,
-    paddingVertical: 12,
-    borderRadius: theme.radius.pill,
-    alignItems: 'center'
-  },
-  tabButtonActive: {
-    backgroundColor: theme.colors.overlay
-  },
-  tabButtonText: {
-    color: theme.colors.muted,
-    fontSize: 14,
-    fontWeight: '800'
-  },
-  tabButtonTextActive: {
-    color: theme.colors.card
-  },
-  fieldWrap: {
-    marginBottom: 14
-  },
-  fieldLabel: {
-    color: theme.colors.ink,
-    fontSize: 13,
-    fontWeight: '800',
-    marginBottom: 8
-  },
-  fieldInput: {
-    backgroundColor: theme.colors.surface,
-    borderWidth: 1,
-    borderColor: theme.colors.border,
-    borderRadius: theme.radius.md,
-    paddingHorizontal: 16,
-    paddingVertical: 15,
-    color: theme.colors.ink,
-    fontSize: 15
-  },
-  errorText: {
-    color: '#B3261E',
-    fontSize: 13,
-    lineHeight: 19,
-    marginBottom: 12
-  },
-  primaryButton: {
-    height: 54,
-    borderRadius: theme.radius.md,
-    backgroundColor: theme.colors.accentDeep,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginTop: 6
-  },
-  primaryButtonText: {
-    color: theme.colors.card,
-    fontSize: 15,
+  wordmark: {
+    color: theme.colors.accent,
+    fontSize: 42,
+    lineHeight: 48,
+    fontStyle: 'italic',
     fontWeight: '900'
   },
-  noticeBox: {
-    marginTop: 18,
-    minHeight: 54,
-    borderRadius: theme.radius.md,
+  tagline: {
+    marginTop: 8,
+    color: '#E2BDB4',
+    fontSize: 13,
+    fontWeight: '900',
+    letterSpacing: 4
+  },
+  card: {
     borderWidth: 1,
     borderColor: theme.colors.border,
-    backgroundColor: theme.colors.surface,
+    backgroundColor: 'rgba(24, 24, 25, 0.94)',
+    padding: 18
+  },
+  cardTitle: {
+    color: theme.colors.ink,
+    fontSize: 26,
+    fontWeight: '800',
+    textTransform: 'uppercase'
+  },
+  titleRule: {
+    width: 84,
+    height: 6,
+    marginTop: 14,
+    marginBottom: 30,
+    backgroundColor: theme.colors.accent
+  },
+  fieldWrap: {
+    marginBottom: 22
+  },
+  fieldLabel: {
+    color: '#E1BDB4',
+    fontSize: 14,
+    fontWeight: '900',
+    letterSpacing: 0.8,
+    marginBottom: 10
+  },
+  fieldFrame: {
+    height: 58,
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+    backgroundColor: theme.colors.field,
+    paddingHorizontal: 16
+  },
+  fieldInput: {
+    flex: 1,
+    marginHorizontal: 16,
+    color: theme.colors.ink,
+    fontSize: 16,
+    fontWeight: '800',
+    letterSpacing: 0.6
+  },
+  errorText: {
+    color: '#FF9B82',
+    fontSize: 13,
+    lineHeight: 18,
+    fontWeight: '800',
+    marginBottom: 14
+  },
+  primaryButton: {
+    height: 64,
     alignItems: 'center',
     justifyContent: 'center',
-    flexDirection: 'row',
-    paddingHorizontal: 14,
-    gap: 8
+    backgroundColor: theme.colors.accent,
+    marginTop: 8
   },
-  noticeText: {
-    color: theme.colors.ink,
-    fontSize: 13,
-    fontWeight: '700'
+  primaryButtonText: {
+    color: theme.colors.black,
+    fontSize: 17,
+    fontWeight: '900',
+    letterSpacing: 4
   },
   buttonDisabled: {
-    opacity: 0.45
+    opacity: 0.55
+  },
+  dividerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 38,
+    marginBottom: 28
+  },
+  divider: {
+    flex: 1,
+    height: 1,
+    backgroundColor: theme.colors.borderWarm
+  },
+  dividerText: {
+    color: theme.colors.accentSoft,
+    fontSize: 12,
+    fontWeight: '900',
+    letterSpacing: 3,
+    marginHorizontal: 18
+  },
+  externalRow: {
+    flexDirection: 'row',
+    gap: 14
+  },
+  externalButton: {
+    flex: 1,
+    height: 58,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#292A2C'
+  },
+  externalText: {
+    color: theme.colors.ink,
+    marginLeft: 12,
+    fontSize: 14,
+    fontWeight: '900'
+  },
+  modeSwitch: {
+    marginTop: 28,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexWrap: 'wrap'
+  },
+  modeCopy: {
+    color: '#E2BDB4',
+    fontSize: 20,
+    marginRight: 12
+  },
+  modeLink: {
+    borderBottomWidth: 1,
+    borderBottomColor: theme.colors.accent
+  },
+  modeLinkText: {
+    color: theme.colors.accent,
+    fontSize: 18,
+    fontWeight: '800',
+    letterSpacing: 1.5
   },
   pressed: {
-    opacity: 0.86
+    opacity: 0.76
   }
 });

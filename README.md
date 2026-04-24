@@ -6,6 +6,28 @@ MotoRoom, motosiklet kullanıcılarını marka ve model bazlı odalarda bir aray
 
 - `apps/mobile`: Expo tabanlı React Native uygulaması
 - `apps/backend`: Express tabanlı örnek API
+- `apps/motoroom-api`: MotoRoom hedef mimarisi için Node.js + TypeScript modular monolith backend iskeleti
+- `docs/motoroom-technical-design.md`: MotoRoom ürün, mimari, veritabanı, API ve WebSocket tasarım dokümanı
+
+## MotoRoom Hedef Mimari İskeleti
+
+Yeni ölçeklenebilir MotoRoom API başlangıcı mevcut MVP'yi bozmadan `apps/motoroom-api` altında hazırlandı.
+
+```bash
+cd apps/motoroom-api
+cp .env.example .env
+npm install
+npm run dev
+```
+
+PostgreSQL, MongoDB ve Redis'i örnek servis isimleriyle kaldırmak için:
+
+```bash
+cd apps/motoroom-api
+docker compose -f docker-compose.example.yml up -d motoroom-postgres motoroom-mongo motoroom-redis
+```
+
+Detaylı teknik tasarım için [docs/motoroom-technical-design.md](/Volumes/KIOXIA/MotoRoom/docs/motoroom-technical-design.md) dosyasına bak.
 
 ## Mobil uygulama
 

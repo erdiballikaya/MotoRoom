@@ -1,15 +1,17 @@
 import { Platform } from 'react-native';
 
-const fallbackApiUrl = Platform.select({
+const localApiUrl = Platform.select({
   android: 'http://10.0.2.2:4000',
   ios: 'http://127.0.0.1:4000',
   default: 'http://localhost:4000'
 });
+const productionApiUrl = 'https://motoroom-backend.onrender.com';
 
 const readEnv = (value: string | undefined) => value?.trim() || undefined;
 
 export const appConfig = {
-  apiBaseUrl: readEnv(process.env.EXPO_PUBLIC_API_URL) ?? fallbackApiUrl ?? 'http://localhost:4000',
+  apiBaseUrl:
+    readEnv(process.env.EXPO_PUBLIC_API_URL) ?? (__DEV__ ? localApiUrl : productionApiUrl) ?? 'http://localhost:4000',
   googleClientId: readEnv(process.env.EXPO_PUBLIC_GOOGLE_CLIENT_ID),
   googleIosClientId: readEnv(process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID),
   googleAndroidClientId: readEnv(process.env.EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID),

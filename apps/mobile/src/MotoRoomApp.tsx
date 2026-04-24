@@ -1,11 +1,12 @@
 import { StatusBar } from 'expo-status-bar';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Image,
   KeyboardAvoidingView,
   Platform,
   Pressable,
+  SafeAreaView,
   ScrollView,
   StyleSheet,
   Text,
@@ -14,11 +15,8 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 
-import { BottomTabs, type AppTab } from './components/BottomTabs';
-import { BrandPill } from './components/BrandPill';
 import { AuthScreen } from './components/AuthScreen';
-import { MessageBubble } from './components/MessageBubble';
-import { RoomCard } from './components/RoomCard';
+import { BottomTabs, type AppTab } from './components/BottomTabs';
 import { loadCatalog, publishMessage } from './services/catalogService';
 import {
   clearStoredSession,
@@ -29,17 +27,12 @@ import {
   restoreStoredSession
 } from './services/authService';
 import { theme } from './theme';
-import { AuthMode, AuthSession, CatalogData, DataSource, RideEvent, Room } from './types';
+import { AuthMode, AuthSession, CatalogData, DataSource, RideEvent, Room, RoomMessage } from './types';
 
 const initialJoinedRooms = ['honda-pcx-125', 'yamaha-mt-07'];
 const appLogo = require('../assets/icon.png');
 
-type BrandFilter = {
-  id: string;
-  name: string;
-  subtitle: string;
-  accent: string;
-};
+type VehicleFilter = 'all' | 'automobile' | 'motorcycle';
 
 type AuthFormState = {
   displayName: string;
@@ -55,36 +48,188 @@ const emptyAuthForm: AuthFormState = {
   password: ''
 };
 
-const StatCard = ({ label, value }: { label: string; value: string }) => (
-  <View style={styles.statCard}>
-    <Text style={styles.statValue}>{value}</Text>
-    <Text style={styles.statLabel}>{label}</Text>
+const clubImages = [
+  'https://images.unsplash.com/photo-1503376780353-7e6692767b70?auto=format&fit=crop&w=900&q=80',
+  'https://images.unsplash.com/photo-1558981806-ec527fa84c39?auto=format&fit=crop&w=900&q=80',
+  'https://images.unsplash.com/photo-1511919884226-fd3cad34687c?auto=format&fit=crop&w=900&q=80',
+  'https://images.unsplash.com/photo-1542362567-b07e54358753?auto=format&fit=crop&w=900&q=80',
+  'https://images.unsplash.com/photo-1558981285-6f0c94958bb6?auto=format&fit=crop&w=900&q=80',
+  'https://images.unsplash.com/photo-1525609004556-c46c7d6cf023?auto=format&fit=crop&w=900&q=80'
+];
+
+const getRoomImage = (room: Room, index = 0) => {
+  const seed = room.id.split('').reduce((total, char) => total + char.charCodeAt(0), index);
+  return clubImages[seed % clubImages.length];
+};
+
+const getVehicleCategory = (room: Room): VehicleFilter => {
+  const automobileHints = ['s40', 'e90', 'series', 'porsche', 'jdm', 'volvo'];
+  const haystack = `${room.id} ${room.modelName} ${room.segment}`.toLocaleLowerCase('en-US');
+  return automobileHints.some((hint) => haystack.includes(hint)) ? 'automobile' : 'motorcycle';
+};
+
+const formatNumber = (value: number) =>
+  value >= 1000 ? `${(value / 1000).toFixed(value >= 10000 ? 0 : 1)}K` : String(value);
+
+const AppHeader = ({
+  session,
+  onSignOut
+}: {
+  session: AuthSession;
+  onSignOut: () => void;
+}) => (
+  <View style={styles.headerBar}>
+    <Image source={appLogo} style={styles.headerAvatar} />
+    <View style={styles.headerCopy}>
+      <Text style={styles.headerWordmark}>MOTOROOM</Text>
+      <Text style={styles.headerSubtitle}>{session.user.displayName.toLocaleUpperCase('tr-TR')} / {session.user.city.toLocaleUpperCase('tr-TR')}</Text>
+    </View>
+    <Pressable onPress={onSignOut} style={({ pressed }) => [styles.headerIconButton, pressed && styles.pressed]}>
+      <Ionicons name="log-out-outline" size={24} color={theme.colors.accent} />
+    </Pressable>
   </View>
 );
 
-const RideCard = ({
-  accent,
-  event,
-  room,
-  onOpenRoom
+const SectionTitle = ({ children }: { children: string }) => (
+  <View style={styles.sectionTitleWrap}>
+    <View style={styles.sectionRail} />
+    <Text style={styles.sectionTitle}>{children}</Text>
+  </View>
+);
+
+const FilterButton = ({
+  label,
+  selected,
+  onPress
 }: {
-  accent: string;
-  event: RideEvent;
-  room: Room;
-  onOpenRoom: (roomId: string) => void;
+  label: string;
+  selected: boolean;
+  onPress: () => void;
 }) => (
-  <Pressable onPress={() => onOpenRoom(room.id)} style={({ pressed }) => [styles.rideCard, pressed && styles.pressed]}>
-    <View style={[styles.rideAccent, { backgroundColor: accent }]} />
-    <Text style={styles.rideTitle}>{event.title}</Text>
-    <Text style={styles.rideMeta}>
-      {room.modelName} · {event.city} · {event.dateLabel}
-    </Text>
-    <Text style={styles.rideAttendees}>{event.attendees} kişi katılım gösterdi</Text>
+  <Pressable onPress={onPress} style={({ pressed }) => [styles.filterButton, selected && styles.filterButtonActive, pressed && styles.pressed]}>
+    <Text style={[styles.filterText, selected && styles.filterTextActive]}>{label}</Text>
   </Pressable>
 );
 
-const getBrandAccent = (catalog: CatalogData | null, brandId: string) =>
-  catalog?.brands.find((brand) => brand.id === brandId)?.accent ?? theme.colors.accent;
+const PopularCard = ({
+  room,
+  imageUri,
+  onOpenRoom
+}: {
+  room: Room;
+  imageUri: string;
+  onOpenRoom: (roomId: string) => void;
+}) => (
+  <Pressable onPress={() => onOpenRoom(room.id)} style={({ pressed }) => [styles.popularCard, pressed && styles.pressed]}>
+    <Image source={{ uri: imageUri }} style={styles.popularImage} />
+    <View style={styles.popularShade} />
+    <View style={styles.popularBadge}>
+      <Text style={styles.popularBadgeText}>{getVehicleCategory(room) === 'automobile' ? 'SEÇKİN' : 'SOKAK'}</Text>
+    </View>
+    <Text style={styles.popularName}>{room.modelName.toLocaleUpperCase('tr-TR')} KOLEKTİFİ</Text>
+    <Text style={styles.popularMeta}>{formatNumber(room.memberCount)} ÜYE</Text>
+  </Pressable>
+);
+
+const ClubCard = ({
+  room,
+  joined,
+  imageUri,
+  onOpenRoom
+}: {
+  room: Room;
+  joined: boolean;
+  imageUri: string;
+  onOpenRoom: (roomId: string) => void;
+}) => (
+  <Pressable onPress={() => onOpenRoom(room.id)} style={({ pressed }) => [styles.clubCard, pressed && styles.pressed]}>
+    <Image source={{ uri: imageUri }} style={styles.clubImage} />
+    <View style={styles.clubBody}>
+      <View style={styles.clubTitleRow}>
+        <View style={styles.clubTitleBlock}>
+          <Text style={styles.clubTitle}>{room.modelName.toLocaleUpperCase('tr-TR')} KULÜBÜ</Text>
+          <Text style={styles.clubDescription} numberOfLines={2}>{room.description.toLocaleUpperCase('tr-TR')}</Text>
+        </View>
+        <Text style={styles.clubTag}>{joined ? 'KATILDIN' : getVehicleCategory(room) === 'automobile' ? 'OTOMOBİL' : 'MOTOSİKLET'}</Text>
+      </View>
+      <View style={styles.clubFooter}>
+        <View>
+          <Text style={styles.metricLabel}>ÜYELER</Text>
+          <Text style={styles.metricValue}>{formatNumber(room.memberCount)}</Text>
+        </View>
+        <View>
+          <Text style={styles.metricLabel}>AKTİVİTE</Text>
+          <Text style={styles.metricHot}>{room.ridersOnline > 80 ? 'YOĞUN' : 'AKTİF'}</Text>
+        </View>
+        <View style={styles.joinButton}>
+          <Text style={styles.joinButtonText}>{joined ? 'AÇ' : 'KATIL'}</Text>
+        </View>
+      </View>
+    </View>
+  </Pressable>
+);
+
+const GroupListRow = ({
+  room,
+  index,
+  onOpenRoom
+}: {
+  room: Room;
+  index: number;
+  onOpenRoom: (roomId: string) => void;
+}) => {
+  const latestMessage = room.messages[0];
+  const unread = index === 0 ? 3 : 0;
+
+  return (
+    <Pressable onPress={() => onOpenRoom(room.id)} style={({ pressed }) => [styles.groupRow, index === 0 && styles.groupRowActive, pressed && styles.pressed]}>
+      <View style={styles.groupIconFrame}>
+        <Image source={{ uri: getRoomImage(room, index) }} style={styles.groupIconImage} />
+      </View>
+      <View style={styles.groupRowCopy}>
+        <Text style={styles.groupRowTitle}>{room.modelName.toLocaleUpperCase('tr-TR')} SAHİPLERİ</Text>
+        <Text style={styles.groupRowMessage} numberOfLines={1}>
+          {(latestMessage?.authorName ?? 'MotoRoom')}: {(latestMessage?.body ?? room.description)}
+        </Text>
+      </View>
+      <View style={styles.groupRowMeta}>
+        <Text style={styles.groupTime}>{index === 0 ? '14:22' : index === 1 ? 'DÜN' : '10 EKİM'}</Text>
+        {unread > 0 ? <Text style={styles.unreadBadge}>{unread}</Text> : null}
+      </View>
+    </Pressable>
+  );
+};
+
+const MessageBlock = ({
+  message,
+  own,
+  imageUri
+}: {
+  message: RoomMessage;
+  own: boolean;
+  imageUri?: string;
+}) => (
+  <View style={[styles.messageRow, own && styles.messageRowOwn]}>
+    {!own ? <View style={styles.messageAvatar} /> : null}
+    <View style={styles.messageColumn}>
+      <Text style={[styles.messageAuthor, own && styles.messageAuthorOwn]}>
+        {own ? 'SEN (MEKANİK_PİLOT)' : message.authorName.toLocaleUpperCase('tr-TR').replace(/\s+/g, '_')}
+      </Text>
+      <View style={[styles.messageBubble, own && styles.messageBubbleOwn]}>
+        {imageUri ? <Image source={{ uri: imageUri }} style={styles.messageImage} /> : null}
+        <Text style={[styles.messageText, own && styles.messageTextOwn]}>{message.body}</Text>
+      </View>
+    </View>
+    {own ? <Image source={appLogo} style={styles.messageOwnAvatar} /> : null}
+  </View>
+);
+
+const InsightStrip = ({ text }: { text: string }) => (
+  <View style={styles.insightStrip}>
+    <Ionicons name="trail-sign" size={20} color={theme.colors.success} />
+    <Text style={styles.insightStripText}>{text.toLocaleUpperCase('tr-TR')}</Text>
+  </View>
+);
 
 export default function MotoRoomApp() {
   const [session, setSession] = useState<AuthSession | null>(null);
@@ -94,7 +239,7 @@ export default function MotoRoomApp() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<AppTab>('discover');
-  const [selectedBrandId, setSelectedBrandId] = useState('all');
+  const [selectedCategory, setSelectedCategory] = useState<VehicleFilter>('all');
   const [selectedRoomId, setSelectedRoomId] = useState<string | null>(null);
   const [joinedRoomIds, setJoinedRoomIds] = useState<string[]>(initialJoinedRooms);
   const [searchQuery, setSearchQuery] = useState('');
@@ -104,6 +249,7 @@ export default function MotoRoomApp() {
   const [authForm, setAuthForm] = useState<AuthFormState>(emptyAuthForm);
   const [authError, setAuthError] = useState<string | null>(null);
   const [authSubmitting, setAuthSubmitting] = useState(false);
+  const chatScrollRef = useRef<ScrollView>(null);
 
   useEffect(() => {
     const bootstrapAuth = async () => {
@@ -155,53 +301,44 @@ export default function MotoRoomApp() {
     void bootstrapCatalog();
   }, [session]);
 
-  const brandFilters = useMemo<BrandFilter[]>(
-    () => [
-      {
-        id: 'all',
-        name: 'Tümü',
-        subtitle: 'Tüm marka ve model odaları',
-        accent: theme.colors.overlay
-      },
-      ...(catalog?.brands ?? [])
-    ],
-    [catalog]
+  const rooms = catalog?.rooms ?? [];
+  const selectedRoom = useMemo(() => rooms.find((room) => room.id === selectedRoomId) ?? null, [rooms, selectedRoomId]);
+  const visibleChatMessages = useMemo(
+    () => (selectedRoom ? [...selectedRoom.messages].reverse() : []),
+    [selectedRoom]
   );
 
   const filteredRooms = useMemo(() => {
     const normalizedQuery = searchQuery.trim().toLocaleLowerCase('tr-TR');
 
-    return (catalog?.rooms ?? []).filter((room) => {
-      const matchesBrand = selectedBrandId === 'all' || room.brandId === selectedBrandId;
+    return rooms.filter((room) => {
+      const category = getVehicleCategory(room);
+      const matchesCategory = selectedCategory === 'all' || category === selectedCategory;
       const matchesQuery =
         normalizedQuery.length === 0 ||
         room.modelName.toLocaleLowerCase('tr-TR').includes(normalizedQuery) ||
+        room.brandId.toLocaleLowerCase('tr-TR').includes(normalizedQuery) ||
         room.tags.some((tag) => tag.toLocaleLowerCase('tr-TR').includes(normalizedQuery)) ||
         room.description.toLocaleLowerCase('tr-TR').includes(normalizedQuery);
 
-      return matchesBrand && matchesQuery;
+      return matchesCategory && matchesQuery;
     });
-  }, [catalog, searchQuery, selectedBrandId]);
+  }, [rooms, searchQuery, selectedCategory]);
 
   const joinedRooms = useMemo(
-    () => (catalog?.rooms ?? []).filter((room) => joinedRoomIds.includes(room.id)),
-    [catalog, joinedRoomIds]
-  );
-
-  const selectedRoom = useMemo(
-    () => catalog?.rooms.find((room) => room.id === selectedRoomId) ?? null,
-    [catalog, selectedRoomId]
+    () => rooms.filter((room) => joinedRoomIds.includes(room.id)),
+    [rooms, joinedRoomIds]
   );
 
   const rideFeed = useMemo(
     () =>
-      (catalog?.rooms ?? []).flatMap((room) =>
+      rooms.flatMap((room) =>
         room.meetups.map((event) => ({
           event,
           room
         }))
       ),
-    [catalog]
+    [rooms]
   );
 
   const handleOpenRoom = (roomId: string) => {
@@ -210,9 +347,11 @@ export default function MotoRoomApp() {
     setJoinedRoomIds((current) => (current.includes(roomId) ? current : [roomId, ...current]));
   };
 
-  const handleBackFromRoom = () => {
-    setSelectedRoomId(null);
-    setDraftMessage('');
+  const handleTabChange = (tab: AppTab) => {
+    setActiveTab(tab);
+    if (tab !== 'rooms') {
+      setSelectedRoomId(null);
+    }
   };
 
   const handleAuthFieldChange = (
@@ -310,133 +449,117 @@ export default function MotoRoomApp() {
     }
   };
 
-  const discoverEmptyState = (
-    <View style={styles.emptyCard}>
-      <Text style={styles.emptyTitle}>Araman için oda bulunamadı</Text>
-      <Text style={styles.emptyBody}>Marka filtresini sıfırla ya da model ismini biraz daha geniş arat.</Text>
-    </View>
-  );
-
   const discoverScreen = (
     <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
-      <View style={styles.heroCard}>
-        <View style={styles.heroCirclePrimary} />
-        <View style={styles.heroCircleSecondary} />
-        <Text style={styles.eyebrow}>MotoRoom MVP</Text>
-        <Text style={styles.heroTitle}>Motosiklet modelini seç, doğrudan odasına gir.</Text>
-        <Text style={styles.heroBody}>
-          Forum arşivini, gerçek zamanlı sohbeti ve şehir bazlı buluşmaları tek akışta birleştiren model bazlı topluluk.
-        </Text>
-
-        <View style={styles.sourceBadge}>
-          <View
-            style={[
-              styles.sourceDot,
-              { backgroundColor: dataSource === 'api' ? theme.colors.success : theme.colors.accentDeep }
-            ]}
-          />
-          <Text style={styles.sourceText}>
-            {dataSource === 'api' ? 'Yerel backend bağlı' : 'Demo veri ile gösterim'}
-          </Text>
-        </View>
+      <View style={styles.searchFrame}>
+        <Ionicons name="search" size={20} color={theme.colors.subtle} />
+        <TextInput
+          placeholder="KULÜP, ARAÇ VEYA ETKİNLİK ARA..."
+          placeholderTextColor={theme.colors.subtle}
+          style={styles.searchInput}
+          value={searchQuery}
+          onChangeText={setSearchQuery}
+        />
       </View>
 
-      <View style={styles.statRow}>
-        <StatCard label="Sezon sinyali" value={catalog?.highlights.summerTrend ?? '-'} />
-        <StatCard label="Aktif şehirler" value={catalog?.highlights.activeRideCities ?? '-'} />
-        <StatCard label="Cevaplanan soru" value={catalog?.highlights.answeredQuestions ?? '-'} />
+      <View style={styles.filterRow}>
+        <FilterButton label="TÜMÜ" selected={selectedCategory === 'all'} onPress={() => setSelectedCategory('all')} />
+        <FilterButton
+          label="OTOMOBİL"
+          selected={selectedCategory === 'automobile'}
+          onPress={() => setSelectedCategory('automobile')}
+        />
+        <FilterButton
+          label="MOTOSİKLET"
+          selected={selectedCategory === 'motorcycle'}
+          onPress={() => setSelectedCategory('motorcycle')}
+        />
       </View>
 
-      <TextInput
-        placeholder="Model, etiket veya problem ara"
-        placeholderTextColor="#8A7D70"
-        style={styles.searchInput}
-        value={searchQuery}
-        onChangeText={setSearchQuery}
-      />
-
-      <Text style={styles.sectionTitle}>Markaya göre gir</Text>
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.brandRail}>
-        {brandFilters.map((brand) => (
-          <BrandPill
-            key={brand.id}
-            accent={brand.accent}
-            id={brand.id}
-            name={brand.name}
-            onPress={setSelectedBrandId}
-            selected={selectedBrandId === brand.id}
-            subtitle={brand.subtitle}
-          />
+      <SectionTitle>POPÜLER GRUPLAR</SectionTitle>
+      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.popularRail}>
+        {rooms.slice(0, 4).map((room, index) => (
+          <PopularCard key={room.id} room={room} imageUri={getRoomImage(room, index)} onOpenRoom={handleOpenRoom} />
         ))}
       </ScrollView>
 
-      <View style={styles.sectionHeader}>
-        <Text style={styles.sectionTitle}>Odalar</Text>
-        <Text style={styles.sectionMeta}>{filteredRooms.length} sonuç</Text>
-      </View>
-
-      {filteredRooms.length > 0
-        ? filteredRooms.map((room) => (
-            <RoomCard
-              key={room.id}
-              accent={getBrandAccent(catalog, room.brandId)}
-              joined={joinedRoomIds.includes(room.id)}
-              room={room}
-              onPress={handleOpenRoom}
-            />
-          ))
-        : discoverEmptyState}
+      <SectionTitle>KULÜPLERİ KEŞFET</SectionTitle>
+      {filteredRooms.length > 0 ? (
+        filteredRooms.map((room, index) => (
+          <ClubCard
+            key={room.id}
+            room={room}
+            joined={joinedRoomIds.includes(room.id)}
+            imageUri={getRoomImage(room, index + 2)}
+            onOpenRoom={handleOpenRoom}
+          />
+        ))
+      ) : (
+        <View style={styles.emptyPanel}>
+          <Text style={styles.emptyTitle}>KULÜP BULUNAMADI</Text>
+          <Text style={styles.emptyBody}>ARAMAYI DEĞİŞTİR VEYA ARAÇ SINIFINI DEĞİŞTİR.</Text>
+        </View>
+      )}
     </ScrollView>
   );
 
-  const roomsScreen = selectedRoom ? (
+  const groupsScreen = selectedRoom ? (
     <KeyboardAvoidingView
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-      keyboardVerticalOffset={Platform.OS === 'ios' ? 16 : 0}
-      style={styles.roomScreen}
+      keyboardVerticalOffset={Platform.OS === 'ios' ? 10 : 0}
+      style={styles.chatShell}
     >
-      <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
-        <Pressable onPress={handleBackFromRoom} style={({ pressed }) => [styles.backButton, pressed && styles.pressed]}>
-          <Ionicons name="chevron-back" size={16} color={theme.colors.ink} />
-          <Text style={styles.backButtonText}>Odalarıma dön</Text>
+      <View style={styles.chatHeader}>
+        <Pressable onPress={() => setSelectedRoomId(null)} style={({ pressed }) => [styles.chatBack, pressed && styles.pressed]}>
+          <Ionicons name="arrow-back" size={26} color={theme.colors.ink} />
         </Pressable>
+        <Image source={{ uri: getRoomImage(selectedRoom) }} style={styles.chatGroupImage} />
+        <View style={styles.chatTitleBlock}>
+          <Text style={styles.chatTitle}>{selectedRoom.modelName.toLocaleUpperCase('tr-TR')} SAHİPLERİ</Text>
+          <Text style={styles.chatSubtitle}>{selectedRoom.ridersOnline.toLocaleString('tr-TR')} AKTİF SÜRÜCÜ</Text>
+        </View>
+        <Ionicons name="search" size={25} color={theme.colors.ink} />
+        <Ionicons name="ellipsis-vertical" size={24} color={theme.colors.ink} />
+      </View>
 
-        <View style={styles.roomHero}>
-          <Text style={styles.roomTitle}>{selectedRoom.modelName}</Text>
-          <Text style={styles.roomSubtitle}>
-            {selectedRoom.segment} · {selectedRoom.engine} · {selectedRoom.memberCount.toLocaleString('tr-TR')} üye
-          </Text>
-          <Text style={styles.roomBody}>{selectedRoom.description}</Text>
-
-          <View style={styles.roomMetrics}>
-            <Text style={styles.roomMetric}>{selectedRoom.ridersOnline} kişi şu an sohbette</Text>
-            <Text style={styles.roomMetric}>{selectedRoom.archivedMessageCount.toLocaleString('tr-TR')} arşiv mesajı</Text>
-          </View>
+      <ScrollView
+        ref={chatScrollRef}
+        contentContainerStyle={styles.chatContent}
+        onContentSizeChange={() => chatScrollRef.current?.scrollToEnd({ animated: true })}
+        showsVerticalScrollIndicator={false}
+      >
+        <View style={styles.datePill}>
+          <Text style={styles.datePillText}>BUGÜN • 21:45</Text>
         </View>
 
-        <Text style={styles.sectionTitle}>Sabit bilgi</Text>
-        {selectedRoom.pinnedInsights.map((insight) => (
-          <View key={insight.title} style={styles.insightCard}>
-            <Text style={styles.insightTitle}>{insight.title}</Text>
-            <Text style={styles.insightBody}>{insight.detail}</Text>
+        {visibleChatMessages.map((message, index) => (
+          <View key={message.id}>
+            <MessageBlock
+              message={message}
+              own={message.authorName === session?.user.displayName}
+              imageUri={index === 1 ? getRoomImage(selectedRoom, 5) : undefined}
+            />
+            {index === 1 ? <InsightStrip text={`${selectedRoom.cityFocus} açık • 0 kaza`} /> : null}
           </View>
         ))}
 
-        <Text style={styles.sectionTitle}>Geçmiş konuşmalar</Text>
-        {selectedRoom.messages.map((message) => (
-          <MessageBubble key={message.id} message={message} />
-        ))}
       </ScrollView>
 
       <View style={styles.composerWrap}>
+        <Pressable style={styles.composerIconButton}>
+          <Ionicons name="add-circle" size={28} color={theme.colors.ink} />
+        </Pressable>
         <TextInput
           multiline
-          placeholder="Sorunu, tavsiyeni ya da buluşma fikrini yaz"
-          placeholderTextColor="#8A7D70"
+          placeholder="MESAJ YAZ..."
+          placeholderTextColor={theme.colors.subtle}
           style={styles.composerInput}
           value={draftMessage}
           onChangeText={setDraftMessage}
         />
+        <Pressable style={styles.composerIconButton}>
+          <Ionicons name="image" size={25} color={theme.colors.ink} />
+        </Pressable>
         <Pressable
           onPress={handleSendMessage}
           style={({ pressed }) => [
@@ -445,103 +568,107 @@ export default function MotoRoomApp() {
             pressed && styles.pressed
           ]}
         >
-          {postingMessage ? (
-            <ActivityIndicator color={theme.colors.card} />
-          ) : (
-            <Ionicons name="arrow-up" size={20} color={theme.colors.card} />
-          )}
+          {postingMessage ? <ActivityIndicator color={theme.colors.black} /> : <Ionicons name="send" size={26} color={theme.colors.black} />}
         </Pressable>
       </View>
     </KeyboardAvoidingView>
   ) : (
     <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
-      <View style={styles.sectionHeader}>
-        <Text style={styles.sectionTitle}>Katıldığın odalar</Text>
-        <Text style={styles.sectionMeta}>{joinedRooms.length} oda</Text>
+      <Text style={styles.screenHeading}>GRUPLARIM</Text>
+      <View style={styles.searchFrameLarge}>
+        <Ionicons name="search" size={24} color={theme.colors.subtle} />
+        <Text style={styles.searchGhost}>KONU VEYA GRUP ARA...</Text>
       </View>
 
-      {joinedRooms.length > 0 ? (
-        joinedRooms.map((room) => (
-          <RoomCard
-            key={room.id}
-            accent={getBrandAccent(catalog, room.brandId)}
-            joined
-            room={room}
-            onPress={handleOpenRoom}
-          />
-        ))
-      ) : (
-        <View style={styles.emptyCard}>
-          <Text style={styles.emptyTitle}>Henüz bir odaya katılmadın</Text>
-          <Text style={styles.emptyBody}>Keşfet sekmesinden marka ve model seçip odanı oluşturabilirsin.</Text>
+      {joinedRooms.map((room, index) => (
+        <GroupListRow key={room.id} room={room} index={index} onOpenRoom={handleOpenRoom} />
+      ))}
+
+      <View style={styles.telemetryPanel}>
+        <View style={styles.telemetryCell}>
+          <Text style={styles.telemetryLabel}>AKTİF GRUPLAR</Text>
+          <Text style={styles.telemetryNumber}>{joinedRooms.length + 12}</Text>
         </View>
-      )}
+        <View style={styles.telemetryCell}>
+          <Text style={styles.telemetryLabel}>OKUNMAMIŞ MESAJ</Text>
+          <View style={styles.unreadMetricRow}>
+            <Text style={styles.telemetryNumberWhite}>3</Text>
+            <View style={styles.unreadBarTrack}>
+              <View style={styles.unreadBarFill} />
+            </View>
+          </View>
+        </View>
+        <View style={styles.latencyPanel}>
+          <Text style={styles.telemetryLabel}>AĞ GECİKMESİ</Text>
+          <View style={styles.barChart}>
+            {[18, 32, 24, 46, 39, 54, 31, 62].map((height, index) => (
+              <View key={`${height}-${index}`} style={[styles.barItem, { height }, index % 3 === 0 && styles.barItemDim]} />
+            ))}
+          </View>
+        </View>
+      </View>
     </ScrollView>
   );
 
-  const ridesScreen = (
+  const createScreen = (
     <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
-      <Text style={styles.sectionTitle}>Yaz buluşmaları</Text>
-      <Text style={styles.sectionLead}>
-        Model odalarından çıkan rota ve tanışma planları burada toplanıyor. Bir buluşmaya dokununca ilgili odaya geçersin.
-      </Text>
-
-      {rideFeed.map(({ event, room }) => (
-        <RideCard
-          key={event.id}
-          accent={getBrandAccent(catalog, room.brandId)}
-          event={event}
-          room={room}
-          onOpenRoom={handleOpenRoom}
-        />
+      <Text style={styles.screenHeading}>OLUŞTUR</Text>
+      <View style={styles.emptyPanel}>
+        <Ionicons name="add-circle" size={34} color={theme.colors.accent} />
+        <Text style={styles.emptyTitle}>ÖZEL KULÜP MODÜLÜ</Text>
+        <Text style={styles.emptyBody}>PREMIUM KULLANICILAR ÖZEL OTOMOBİL VEYA MOTOSİKLET GRUPLARI OLUŞTURABİLİR.</Text>
+      </View>
+      {rideFeed.slice(0, 4).map(({ event, room }) => (
+        <RideCard key={event.id} event={event} room={room} onOpenRoom={handleOpenRoom} />
       ))}
     </ScrollView>
   );
 
-  const activeScreen = activeTab === 'discover' ? discoverScreen : activeTab === 'rooms' ? roomsScreen : ridesScreen;
-
-  return (
-    <View style={styles.appShell}>
-      <StatusBar style="dark" />
-      <View style={styles.backgroundOrbOne} />
-      <View style={styles.backgroundOrbTwo} />
-
-      <View style={styles.safeContainer}>
-        <View style={styles.headerBar}>
-          <View style={styles.headerBrand}>
-            <View style={styles.headerLogoWrap}>
-              <Image source={appLogo} style={styles.headerLogo} />
-            </View>
-            <View>
-              <Text style={styles.headerTitle}>MotoRoom</Text>
-              <Text style={styles.headerSubtitle}>
-                {session ? `${session.user.displayName} · ${session.user.city}` : 'Motorcular için girişli topluluk'}
-              </Text>
-            </View>
+  const garageScreen = (
+    <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
+      <Text style={styles.screenHeading}>GARAJ</Text>
+      <View style={styles.garageCard}>
+        <Image source={appLogo} style={styles.garageAvatar} />
+        <Text style={styles.garageName}>{session?.user.displayName.toLocaleUpperCase('tr-TR')}</Text>
+        <Text style={styles.garageMeta}>STANDART OPERATÖR • {session?.user.city.toLocaleUpperCase('tr-TR')}</Text>
+        <View style={styles.garageGrid}>
+          <View style={styles.garageStat}>
+            <Text style={styles.metricLabel}>GRUP LİMİTİ</Text>
+            <Text style={styles.metricValue}>4</Text>
           </View>
-
-          {session ? (
-            <View style={styles.sessionActions}>
-              <View style={styles.userBubble}>
-                <Text style={styles.userBubbleText}>{session.user.displayName.slice(0, 1).toUpperCase()}</Text>
-              </View>
-              <Pressable onPress={handleSignOut} style={({ pressed }) => [styles.logoutButton, pressed && styles.pressed]}>
-                <Ionicons name="log-out-outline" size={18} color={theme.colors.card} />
-              </Pressable>
-            </View>
-          ) : (
-            <View style={styles.headerBadge}>
-              <Text style={styles.headerBadgeText}>AUTH</Text>
-            </View>
-          )}
+          <View style={styles.garageStat}>
+            <Text style={styles.metricLabel}>BEKLEME</Text>
+            <Text style={styles.metricValue}>24H</Text>
+          </View>
         </View>
+      </View>
+    </ScrollView>
+  );
 
-        {authBootstrapping ? (
-          <View style={styles.loadingState}>
-            <ActivityIndicator color={theme.colors.accentDeep} size="large" />
-            <Text style={styles.loadingText}>Oturum hazırlanıyor...</Text>
-          </View>
-        ) : !session ? (
+  const activeScreen =
+    activeTab === 'discover'
+      ? discoverScreen
+      : activeTab === 'rooms'
+        ? groupsScreen
+        : activeTab === 'create'
+          ? createScreen
+          : garageScreen;
+
+  if (authBootstrapping) {
+    return (
+      <View style={styles.loadingState}>
+        <StatusBar style="light" />
+        <ActivityIndicator color={theme.colors.accent} size="large" />
+        <Text style={styles.loadingText}>MOTOROOM BAŞLATILIYOR...</Text>
+      </View>
+    );
+  }
+
+  if (!session) {
+    return (
+      <View style={styles.appShell}>
+        <StatusBar style="light" />
+        <SafeAreaView style={styles.safeArea}>
           <AuthScreen
             city={authForm.city}
             displayName={authForm.displayName}
@@ -554,455 +681,778 @@ export default function MotoRoomApp() {
             onSubmit={handleAuthSubmit}
             password={authForm.password}
           />
-        ) : loading ? (
+        </SafeAreaView>
+      </View>
+    );
+  }
+
+  return (
+    <View style={styles.appShell}>
+      <StatusBar style="light" />
+      <SafeAreaView style={styles.safeArea}>
+        {selectedRoom && activeTab === 'rooms' ? null : <AppHeader session={session} onSignOut={handleSignOut} />}
+
+        {loading ? (
           <View style={styles.loadingState}>
-            <ActivityIndicator color={theme.colors.accentDeep} size="large" />
-            <Text style={styles.loadingText}>Model odaları hazırlanıyor...</Text>
+            <ActivityIndicator color={theme.colors.accent} size="large" />
+            <Text style={styles.loadingText}>KULÜP LİSTESİ EŞİTLENİYOR...</Text>
           </View>
         ) : error ? (
           <View style={styles.loadingState}>
-            <Text style={styles.errorTitle}>Başlangıç yüklenemedi</Text>
+            <Text style={styles.errorTitle}>BAŞLATMA BAŞARISIZ</Text>
             <Text style={styles.errorBody}>{error}</Text>
           </View>
         ) : (
           <>
             <View style={styles.contentWrap}>{activeScreen}</View>
-            <BottomTabs activeTab={activeTab} onChange={setActiveTab} />
+            {selectedRoom && activeTab === 'rooms' ? null : <BottomTabs activeTab={activeTab} onChange={handleTabChange} />}
           </>
         )}
-      </View>
+
+        {dataSource === 'mock' && !selectedRoom ? (
+          <View style={styles.sourceBadge}>
+          <Text style={styles.sourceBadgeText}>ÖRNEK VERİ</Text>
+          </View>
+        ) : null}
+      </SafeAreaView>
     </View>
   );
 }
+
+const RideCard = ({
+  event,
+  room,
+  onOpenRoom
+}: {
+  event: RideEvent;
+  room: Room;
+  onOpenRoom: (roomId: string) => void;
+}) => (
+  <Pressable onPress={() => onOpenRoom(room.id)} style={({ pressed }) => [styles.rideCard, pressed && styles.pressed]}>
+    <View style={styles.rideAccent} />
+    <View style={styles.rideCopy}>
+      <Text style={styles.rideTitle}>{event.title.toLocaleUpperCase('tr-TR')}</Text>
+      <Text style={styles.rideMeta}>{room.modelName.toLocaleUpperCase('tr-TR')} • {event.city.toLocaleUpperCase('tr-TR')} • {event.dateLabel.toLocaleUpperCase('tr-TR')}</Text>
+    </View>
+    <Text style={styles.rideCount}>{event.attendees}</Text>
+  </Pressable>
+);
 
 const styles = StyleSheet.create({
   appShell: {
     flex: 1,
     backgroundColor: theme.colors.background
   },
-  safeContainer: {
+  safeArea: {
     flex: 1,
-    paddingTop: 58
-  },
-  backgroundOrbOne: {
-    position: 'absolute',
-    top: -110,
-    right: -40,
-    width: 220,
-    height: 220,
-    borderRadius: 220,
-    backgroundColor: '#FFBC86'
-  },
-  backgroundOrbTwo: {
-    position: 'absolute',
-    left: -60,
-    top: 110,
-    width: 140,
-    height: 140,
-    borderRadius: 140,
-    backgroundColor: '#F3D3B3'
-  },
-  headerBar: {
-    paddingHorizontal: 22,
-    paddingBottom: 18,
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center'
-  },
-  headerBrand: {
-    flexDirection: 'row',
-    alignItems: 'center'
-  },
-  headerLogoWrap: {
-    width: 52,
-    height: 52,
-    borderRadius: 18,
-    backgroundColor: theme.colors.card,
-    borderWidth: 1,
-    borderColor: theme.colors.border,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: 12,
-    shadowColor: '#000',
-    shadowOpacity: 0.06,
-    shadowRadius: 10,
-    shadowOffset: {
-      width: 0,
-      height: 4
-    }
-  },
-  headerLogo: {
-    width: 34,
-    height: 34,
-    borderRadius: 10
-  },
-  headerTitle: {
-    color: theme.colors.ink,
-    fontSize: 28,
-    fontWeight: '900'
-  },
-  headerSubtitle: {
-    color: theme.colors.muted,
-    fontSize: 13,
-    marginTop: 4
-  },
-  headerBadge: {
-    backgroundColor: theme.colors.overlay,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    borderRadius: theme.radius.pill
-  },
-  headerBadgeText: {
-    color: theme.colors.card,
-    fontSize: 12,
-    fontWeight: '800'
-  },
-  sessionActions: {
-    flexDirection: 'row',
-    alignItems: 'center'
-  },
-  userBubble: {
-    width: 38,
-    height: 38,
-    borderRadius: 19,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: theme.colors.card,
-    borderWidth: 1,
-    borderColor: theme.colors.border,
-    marginRight: 8
-  },
-  userBubbleText: {
-    color: theme.colors.ink,
-    fontSize: 14,
-    fontWeight: '900'
-  },
-  logoutButton: {
-    width: 38,
-    height: 38,
-    borderRadius: 19,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: theme.colors.overlay
+    backgroundColor: theme.colors.background
   },
   contentWrap: {
     flex: 1
   },
+  headerBar: {
+    minHeight: 70,
+    paddingHorizontal: 16,
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderBottomWidth: 1,
+    borderBottomColor: theme.colors.border,
+    backgroundColor: theme.colors.surface
+  },
+  headerAvatar: {
+    width: 36,
+    height: 36,
+    borderWidth: 1,
+    borderColor: theme.colors.ink,
+    marginRight: 14
+  },
+  headerCopy: {
+    flex: 1
+  },
+  headerWordmark: {
+    color: theme.colors.accent,
+    fontSize: 24,
+    fontStyle: 'italic',
+    fontWeight: '900'
+  },
+  headerSubtitle: {
+    color: theme.colors.subtle,
+    fontSize: 10,
+    fontWeight: '900',
+    letterSpacing: 1.4,
+    marginTop: 3
+  },
+  headerIconButton: {
+    width: 42,
+    height: 42,
+    alignItems: 'center',
+    justifyContent: 'center'
+  },
   scrollContent: {
-    paddingHorizontal: 22,
+    paddingHorizontal: 14,
+    paddingTop: 14,
     paddingBottom: 28
   },
-  heroCard: {
-    backgroundColor: '#22160E',
-    borderRadius: theme.radius.lg,
-    padding: 22,
-    overflow: 'hidden',
-    marginBottom: 20
-  },
-  heroCirclePrimary: {
-    position: 'absolute',
-    width: 180,
-    height: 180,
-    borderRadius: 180,
-    right: -55,
-    top: -40,
-    backgroundColor: '#F26A1B'
-  },
-  heroCircleSecondary: {
-    position: 'absolute',
-    width: 110,
-    height: 110,
-    borderRadius: 110,
-    right: 70,
-    bottom: -50,
-    backgroundColor: '#195E53'
-  },
-  eyebrow: {
-    color: '#F7C18A',
-    fontSize: 12,
-    fontWeight: '800',
-    letterSpacing: 1
-  },
-  heroTitle: {
-    color: theme.colors.card,
-    fontSize: 30,
-    lineHeight: 36,
-    fontWeight: '900',
-    marginTop: 10,
-    maxWidth: '80%'
-  },
-  heroBody: {
-    color: '#E8DCCF',
-    fontSize: 15,
-    lineHeight: 23,
-    marginTop: 14,
-    maxWidth: '86%'
-  },
-  sourceBadge: {
-    marginTop: 18,
-    alignSelf: 'flex-start',
+  searchFrame: {
+    height: 50,
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#34251A',
-    borderRadius: theme.radius.pill,
-    paddingHorizontal: 12,
-    paddingVertical: 8
-  },
-  sourceDot: {
-    width: 10,
-    height: 10,
-    borderRadius: 10,
-    marginRight: 8
-  },
-  sourceText: {
-    color: theme.colors.card,
-    fontSize: 12,
-    fontWeight: '700'
-  },
-  statRow: {
-    flexDirection: 'row',
-    gap: 12,
-    marginBottom: 20
-  },
-  statCard: {
-    flex: 1,
-    backgroundColor: theme.colors.surface,
-    borderRadius: theme.radius.md,
     borderWidth: 1,
     borderColor: theme.colors.border,
-    padding: 14
+    backgroundColor: theme.colors.surfaceRaised,
+    paddingHorizontal: 14,
+    marginBottom: 12
   },
-  statValue: {
-    color: theme.colors.ink,
-    fontSize: 14,
-    lineHeight: 20,
-    fontWeight: '800'
-  },
-  statLabel: {
-    color: theme.colors.muted,
-    fontSize: 12,
-    marginTop: 8
+  searchFrameLarge: {
+    height: 72,
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+    backgroundColor: theme.colors.surfaceRaised,
+    paddingHorizontal: 20,
+    marginTop: 22,
+    marginBottom: 28
   },
   searchInput: {
-    backgroundColor: theme.colors.card,
-    borderRadius: theme.radius.md,
+    flex: 1,
+    color: theme.colors.ink,
+    fontSize: 12,
+    fontWeight: '900',
+    letterSpacing: 1.6,
+    marginLeft: 10
+  },
+  searchGhost: {
+    color: theme.colors.subtle,
+    fontSize: 16,
+    fontWeight: '900',
+    letterSpacing: 2.4,
+    marginLeft: 18
+  },
+  filterRow: {
+    flexDirection: 'row',
+    gap: 6,
+    marginBottom: 28
+  },
+  filterButton: {
+    minHeight: 54,
+    paddingHorizontal: 18,
+    alignItems: 'center',
+    justifyContent: 'center',
     borderWidth: 1,
     borderColor: theme.colors.border,
-    paddingHorizontal: 16,
-    paddingVertical: 15,
+    backgroundColor: theme.colors.background
+  },
+  filterButtonActive: {
+    borderColor: theme.colors.accent,
+    backgroundColor: theme.colors.accent
+  },
+  filterText: {
     color: theme.colors.ink,
-    fontSize: 15,
-    marginBottom: 18
+    fontSize: 12,
+    fontWeight: '800'
   },
-  brandRail: {
-    paddingBottom: 8
+  filterTextActive: {
+    color: theme.colors.black
   },
-  sectionHeader: {
+  sectionTitleWrap: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 10
+    marginBottom: 14,
+    marginTop: 2
+  },
+  sectionRail: {
+    width: 4,
+    height: 22,
+    backgroundColor: theme.colors.accent,
+    marginRight: 8
   },
   sectionTitle: {
     color: theme.colors.ink,
-    fontSize: 22,
-    fontWeight: '900',
-    marginBottom: 12
-  },
-  sectionMeta: {
-    color: theme.colors.muted,
-    fontSize: 12,
-    fontWeight: '700'
-  },
-  sectionLead: {
-    color: theme.colors.muted,
-    fontSize: 15,
-    lineHeight: 23,
-    marginBottom: 20
-  },
-  emptyCard: {
-    backgroundColor: theme.colors.surface,
-    borderRadius: theme.radius.md,
-    borderWidth: 1,
-    borderColor: theme.colors.border,
-    padding: 18
-  },
-  emptyTitle: {
-    color: theme.colors.ink,
-    fontSize: 17,
-    fontWeight: '800'
-  },
-  emptyBody: {
-    color: theme.colors.muted,
-    fontSize: 14,
-    lineHeight: 21,
-    marginTop: 8
-  },
-  roomScreen: {
-    flex: 1
-  },
-  backButton: {
-    alignSelf: 'flex-start',
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: theme.colors.surface,
-    borderRadius: theme.radius.pill,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    marginBottom: 14
-  },
-  backButtonText: {
-    color: theme.colors.ink,
     fontSize: 13,
-    fontWeight: '800',
-    marginLeft: 6
-  },
-  roomHero: {
-    backgroundColor: theme.colors.card,
-    borderRadius: theme.radius.lg,
-    borderWidth: 1,
-    borderColor: theme.colors.border,
-    padding: 20,
-    marginBottom: 20
-  },
-  roomTitle: {
-    color: theme.colors.ink,
-    fontSize: 30,
     fontWeight: '900'
   },
-  roomSubtitle: {
-    color: theme.colors.muted,
-    fontSize: 14,
-    marginTop: 6
+  popularRail: {
+    paddingBottom: 26,
+    gap: 12
   },
-  roomBody: {
-    color: theme.colors.ink,
-    fontSize: 15,
-    lineHeight: 23,
-    marginTop: 16
-  },
-  roomMetrics: {
-    marginTop: 18,
-    gap: 8
-  },
-  roomMetric: {
-    color: theme.colors.accentDeep,
-    fontSize: 13,
-    fontWeight: '700'
-  },
-  insightCard: {
-    backgroundColor: '#FFF4E8',
-    borderRadius: theme.radius.md,
-    padding: 16,
-    marginBottom: 12,
+  popularCard: {
+    width: 220,
+    height: 216,
     borderWidth: 1,
-    borderColor: '#F3D3B2'
+    borderColor: theme.colors.border,
+    backgroundColor: theme.colors.card,
+    overflow: 'hidden'
   },
-  insightTitle: {
+  popularImage: {
+    width: '100%',
+    height: 138,
+    opacity: 0.88
+  },
+  popularShade: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(0,0,0,0.18)'
+  },
+  popularBadge: {
+    alignSelf: 'flex-start',
+    backgroundColor: theme.colors.black,
+    marginTop: -12,
+    marginLeft: 10,
+    paddingHorizontal: 7,
+    paddingVertical: 4
+  },
+  popularBadgeText: {
+    color: theme.colors.accent,
+    fontSize: 10,
+    fontWeight: '900'
+  },
+  popularName: {
     color: theme.colors.ink,
-    fontSize: 15,
-    fontWeight: '800'
-  },
-  insightBody: {
-    color: theme.colors.muted,
     fontSize: 14,
-    lineHeight: 21,
+    fontWeight: '900',
+    marginHorizontal: 10,
     marginTop: 8
   },
-  composerWrap: {
+  popularMeta: {
+    color: theme.colors.muted,
+    fontSize: 12,
+    marginHorizontal: 10,
+    marginTop: 6
+  },
+  clubCard: {
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+    backgroundColor: theme.colors.card,
+    marginBottom: 16,
+    overflow: 'hidden'
+  },
+  clubImage: {
+    width: '100%',
+    height: 190,
+    opacity: 0.9
+  },
+  clubBody: {
+    padding: 14
+  },
+  clubTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
+    gap: 12
+  },
+  clubTitleBlock: {
+    flex: 1
+  },
+  clubTitle: {
+    color: theme.colors.ink,
+    fontSize: 15,
+    fontWeight: '900'
+  },
+  clubTag: {
+    color: theme.colors.ink,
+    fontSize: 8,
+    fontWeight: '900',
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+    paddingHorizontal: 7,
+    paddingVertical: 4
+  },
+  clubDescription: {
+    color: theme.colors.muted,
+    fontSize: 11,
+    lineHeight: 18,
+    marginTop: 12
+  },
+  clubFooter: {
+    marginTop: 18,
+    paddingTop: 14,
+    borderTopWidth: 1,
+    borderTopColor: '#1E1F22',
     flexDirection: 'row',
     alignItems: 'flex-end',
-    gap: 12,
-    paddingHorizontal: 22,
-    paddingTop: 12,
-    paddingBottom: Platform.OS === 'ios' ? 26 : 18,
-    backgroundColor: '#F8F2EA',
+    justifyContent: 'space-between'
+  },
+  metricLabel: {
+    color: theme.colors.muted,
+    fontSize: 8,
+    fontWeight: '900'
+  },
+  metricValue: {
+    color: theme.colors.ink,
+    fontSize: 13,
+    fontWeight: '900',
+    marginTop: 4
+  },
+  metricHot: {
+    color: theme.colors.success,
+    fontSize: 13,
+    fontWeight: '900',
+    marginTop: 4
+  },
+  joinButton: {
+    width: 92,
+    height: 36,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: theme.colors.accent
+  },
+  joinButtonText: {
+    color: theme.colors.black,
+    fontSize: 11,
+    fontWeight: '900'
+  },
+  screenHeading: {
+    color: theme.colors.ink,
+    fontSize: 27,
+    fontWeight: '800',
+    marginTop: 16
+  },
+  groupRow: {
+    minHeight: 112,
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderBottomWidth: 1,
+    borderBottomColor: theme.colors.border,
+    backgroundColor: theme.colors.background,
+    paddingHorizontal: 18
+  },
+  groupRowActive: {
+    borderLeftWidth: 6,
+    borderLeftColor: theme.colors.accent,
+    backgroundColor: theme.colors.surface
+  },
+  groupIconFrame: {
+    width: 66,
+    height: 66,
+    borderWidth: 1,
+    borderColor: '#454850',
+    padding: 3,
+    marginRight: 18
+  },
+  groupIconImage: {
+    flex: 1
+  },
+  groupRowCopy: {
+    flex: 1
+  },
+  groupRowTitle: {
+    color: theme.colors.ink,
+    fontSize: 18,
+    fontWeight: '900'
+  },
+  groupRowMessage: {
+    color: theme.colors.muted,
+    fontSize: 14,
+    fontWeight: '700',
+    marginTop: 8
+  },
+  groupRowMeta: {
+    alignItems: 'flex-end',
+    gap: 12
+  },
+  groupTime: {
+    color: theme.colors.muted,
+    fontSize: 12,
+    fontWeight: '900'
+  },
+  unreadBadge: {
+    minWidth: 34,
+    height: 34,
+    textAlign: 'center',
+    textAlignVertical: 'center',
+    backgroundColor: theme.colors.accent,
+    color: theme.colors.black,
+    fontSize: 16,
+    fontWeight: '900',
+    paddingTop: Platform.OS === 'ios' ? 7 : 5
+  },
+  telemetryPanel: {
+    marginTop: 34,
+    borderWidth: 1,
+    borderColor: theme.colors.border
+  },
+  telemetryCell: {
+    width: '50%',
+    minHeight: 112,
+    padding: 20,
+    borderRightWidth: 1,
+    borderBottomWidth: 1,
+    borderColor: theme.colors.border
+  },
+  telemetryLabel: {
+    color: theme.colors.muted,
+    fontSize: 12,
+    fontWeight: '900',
+    letterSpacing: 2
+  },
+  telemetryNumber: {
+    color: theme.colors.accent,
+    fontSize: 34,
+    fontWeight: '900',
+    marginTop: 16
+  },
+  telemetryNumberWhite: {
+    color: theme.colors.ink,
+    fontSize: 34,
+    fontWeight: '900'
+  },
+  unreadMetricRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 14,
+    gap: 16
+  },
+  unreadBarTrack: {
+    flex: 1,
+    height: 12,
+    backgroundColor: '#202126'
+  },
+  unreadBarFill: {
+    width: '34%',
+    height: '100%',
+    backgroundColor: theme.colors.accent
+  },
+  latencyPanel: {
+    minHeight: 118,
+    padding: 20,
+    borderTopWidth: 0,
+    borderColor: theme.colors.border
+  },
+  barChart: {
+    marginTop: 22,
+    flexDirection: 'row',
+    alignItems: 'flex-end',
+    gap: 8,
+    minHeight: 70
+  },
+  barItem: {
+    flex: 1,
+    backgroundColor: theme.colors.accent
+  },
+  barItemDim: {
+    backgroundColor: '#7A2F17'
+  },
+  chatShell: {
+    flex: 1,
+    backgroundColor: theme.colors.background
+  },
+  chatHeader: {
+    minHeight: 72,
+    paddingHorizontal: 16,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 14,
+    borderBottomWidth: 1,
+    borderBottomColor: theme.colors.border,
+    backgroundColor: theme.colors.surface
+  },
+  chatBack: {
+    width: 34,
+    height: 34,
+    justifyContent: 'center'
+  },
+  chatGroupImage: {
+    width: 46,
+    height: 46,
+    borderWidth: 1,
+    borderColor: theme.colors.border
+  },
+  chatTitleBlock: {
+    flex: 1
+  },
+  chatTitle: {
+    color: theme.colors.accent,
+    fontSize: 16,
+    fontWeight: '900'
+  },
+  chatSubtitle: {
+    color: theme.colors.muted,
+    fontSize: 15,
+    fontWeight: '900',
+    letterSpacing: 2,
+    marginTop: 4
+  },
+  chatContent: {
+    paddingHorizontal: 14,
+    paddingTop: 36,
+    paddingBottom: 24
+  },
+  datePill: {
+    alignSelf: 'center',
+    borderWidth: 1,
+    borderColor: theme.colors.borderWarm,
+    backgroundColor: theme.colors.panel,
+    paddingHorizontal: 24,
+    paddingVertical: 8,
+    marginBottom: 32
+  },
+  datePillText: {
+    color: theme.colors.muted,
+    fontSize: 13,
+    fontWeight: '900',
+    letterSpacing: 3
+  },
+  messageRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-end',
+    marginBottom: 24
+  },
+  messageRowOwn: {
+    justifyContent: 'flex-end'
+  },
+  messageAvatar: {
+    width: 34,
+    height: 34,
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+    backgroundColor: theme.colors.panel,
+    marginRight: 10
+  },
+  messageOwnAvatar: {
+    width: 34,
+    height: 34,
+    borderWidth: 1,
+    borderColor: theme.colors.accent,
+    marginLeft: 10
+  },
+  messageColumn: {
+    maxWidth: '78%'
+  },
+  messageAuthor: {
+    color: theme.colors.muted,
+    fontSize: 12,
+    fontWeight: '900',
+    letterSpacing: 1.2,
+    marginBottom: 8,
+    marginLeft: 6
+  },
+  messageAuthorOwn: {
+    color: theme.colors.accent,
+    textAlign: 'right'
+  },
+  messageBubble: {
+    borderWidth: 1,
+    borderColor: theme.colors.borderWarm,
+    backgroundColor: theme.colors.panel,
+    padding: 16
+  },
+  messageBubbleOwn: {
+    borderColor: theme.colors.accent,
+    backgroundColor: theme.colors.accent
+  },
+  messageText: {
+    color: theme.colors.ink,
+    fontSize: 20,
+    lineHeight: 30
+  },
+  messageTextOwn: {
+    color: theme.colors.black
+  },
+  messageImage: {
+    width: 260,
+    height: 150,
+    marginBottom: 14
+  },
+  insightStrip: {
+    minHeight: 56,
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 18,
+    marginBottom: 24
+  },
+  insightStripText: {
+    color: theme.colors.muted,
+    fontSize: 12,
+    fontWeight: '900',
+    letterSpacing: 2,
+    marginLeft: 14
+  },
+  typingText: {
+    color: theme.colors.muted,
+    fontSize: 12,
+    fontStyle: 'italic',
+    fontWeight: '900',
+    letterSpacing: 2,
+    marginLeft: 58,
+    marginBottom: 12
+  },
+  composerWrap: {
+    minHeight: 94,
+    flexDirection: 'row',
+    alignItems: 'center',
     borderTopWidth: 1,
-    borderTopColor: theme.colors.border
+    borderTopColor: theme.colors.border,
+    backgroundColor: theme.colors.surface,
+    paddingHorizontal: 14,
+    paddingVertical: 14,
+    gap: 10
+  },
+  composerIconButton: {
+    width: 42,
+    height: 48,
+    alignItems: 'center',
+    justifyContent: 'center'
   },
   composerInput: {
     flex: 1,
+    minHeight: 58,
     maxHeight: 110,
-    minHeight: 52,
-    paddingHorizontal: 16,
-    paddingTop: 14,
-    paddingBottom: 14,
-    borderRadius: theme.radius.md,
-    backgroundColor: theme.colors.card,
-    borderWidth: 1,
-    borderColor: theme.colors.border,
+    borderBottomWidth: 2,
+    borderBottomColor: theme.colors.subtle,
+    backgroundColor: theme.colors.surfaceRaised,
     color: theme.colors.ink,
-    fontSize: 15
+    fontSize: 18,
+    paddingHorizontal: 14,
+    paddingTop: 16
   },
   sendButton: {
-    width: 52,
-    height: 52,
-    borderRadius: 26,
+    width: 60,
+    height: 58,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: theme.colors.accentDeep
+    backgroundColor: theme.colors.accent
   },
   sendButtonDisabled: {
-    opacity: 0.45
+    opacity: 0.55
   },
-  rideCard: {
-    backgroundColor: theme.colors.card,
-    borderRadius: theme.radius.lg,
+  emptyPanel: {
+    minHeight: 150,
+    alignItems: 'flex-start',
+    justifyContent: 'center',
     borderWidth: 1,
     borderColor: theme.colors.border,
-    padding: 18,
-    paddingLeft: 22,
-    marginBottom: 14
+    padding: 22,
+    backgroundColor: theme.colors.surface
+  },
+  emptyTitle: {
+    color: theme.colors.ink,
+    fontSize: 18,
+    fontWeight: '900',
+    marginTop: 12
+  },
+  emptyBody: {
+    color: theme.colors.muted,
+    fontSize: 12,
+    lineHeight: 20,
+    fontWeight: '800',
+    marginTop: 10
+  },
+  rideCard: {
+    minHeight: 88,
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+    backgroundColor: theme.colors.surface,
+    marginTop: 14
   },
   rideAccent: {
-    position: 'absolute',
-    left: 0,
-    top: 0,
-    bottom: 0,
-    width: 6,
-    borderTopLeftRadius: theme.radius.lg,
-    borderBottomLeftRadius: theme.radius.lg
+    width: 5,
+    alignSelf: 'stretch',
+    backgroundColor: theme.colors.accent
+  },
+  rideCopy: {
+    flex: 1,
+    padding: 16
   },
   rideTitle: {
     color: theme.colors.ink,
-    fontSize: 18,
-    fontWeight: '800'
+    fontSize: 14,
+    fontWeight: '900'
   },
   rideMeta: {
     color: theme.colors.muted,
-    fontSize: 13,
+    fontSize: 11,
+    fontWeight: '800',
     marginTop: 8
   },
-  rideAttendees: {
-    color: theme.colors.accentDeep,
-    fontSize: 13,
-    fontWeight: '700',
-    marginTop: 12
+  rideCount: {
+    color: theme.colors.accent,
+    fontSize: 24,
+    fontWeight: '900',
+    marginRight: 18
+  },
+  garageCard: {
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+    backgroundColor: theme.colors.surface,
+    padding: 22,
+    marginTop: 22
+  },
+  garageAvatar: {
+    width: 72,
+    height: 72,
+    borderWidth: 1,
+    borderColor: theme.colors.ink
+  },
+  garageName: {
+    color: theme.colors.ink,
+    fontSize: 24,
+    fontWeight: '900',
+    marginTop: 18
+  },
+  garageMeta: {
+    color: theme.colors.muted,
+    fontSize: 12,
+    fontWeight: '900',
+    letterSpacing: 1.4,
+    marginTop: 8
+  },
+  garageGrid: {
+    flexDirection: 'row',
+    gap: 12,
+    marginTop: 22
+  },
+  garageStat: {
+    flex: 1,
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+    padding: 16
+  },
+  sourceBadge: {
+    position: 'absolute',
+    right: 12,
+    bottom: 88,
+    backgroundColor: theme.colors.panel,
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+    paddingHorizontal: 10,
+    paddingVertical: 6
+  },
+  sourceBadgeText: {
+    color: theme.colors.muted,
+    fontSize: 9,
+    fontWeight: '900',
+    letterSpacing: 1.2
   },
   loadingState: {
     flex: 1,
-    justifyContent: 'center',
     alignItems: 'center',
-    paddingHorizontal: 32
+    justifyContent: 'center',
+    backgroundColor: theme.colors.background,
+    padding: 24
   },
   loadingText: {
     color: theme.colors.muted,
-    fontSize: 15,
-    marginTop: 14
+    fontSize: 13,
+    fontWeight: '900',
+    letterSpacing: 2,
+    marginTop: 16
   },
   errorTitle: {
-    color: theme.colors.ink,
-    fontSize: 24,
-    fontWeight: '900'
+    color: theme.colors.accent,
+    fontSize: 18,
+    fontWeight: '900',
+    marginBottom: 10
   },
   errorBody: {
     color: theme.colors.muted,
-    fontSize: 15,
-    lineHeight: 23,
-    textAlign: 'center',
-    marginTop: 10
+    fontSize: 14,
+    textAlign: 'center'
   },
   pressed: {
-    opacity: 0.86
+    opacity: 0.74
   }
 });

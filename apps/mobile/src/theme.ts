@@ -1,24 +1,31 @@
 export const theme = {
   colors: {
-    background: '#F6EFE3',
-    surface: '#FFF9F2',
-    card: '#FFFFFF',
-    ink: '#17120D',
-    muted: '#6A5F54',
-    border: '#E8D8C7',
-    accent: '#F26A1B',
-    accentDeep: '#D94C14',
-    success: '#135D52',
-    info: '#2455E6',
-    chip: '#FCE5D1',
-    chipText: '#7D3D16',
-    overlay: '#22160E',
-    tabIdle: '#C4B29D'
+    background: '#090A0C',
+    surface: '#111214',
+    surfaceRaised: '#191A1D',
+    panel: '#202124',
+    field: '#2E2F2F',
+    card: '#151618',
+    ink: '#F3F0EB',
+    muted: '#8D8E99',
+    subtle: '#5F616C',
+    border: '#303236',
+    borderWarm: '#684235',
+    accent: '#FF4E1F',
+    accentDeep: '#D93A12',
+    accentSoft: '#B58B80',
+    chip: '#27292D',
+    chipText: '#FFB59E',
+    success: '#00F0B5',
+    warning: '#FFB347',
+    info: '#8D91A0',
+    tabIdle: '#8A8C96',
+    black: '#050607'
   },
   radius: {
-    sm: 12,
-    md: 18,
-    lg: 28,
+    sm: 2,
+    md: 4,
+    lg: 6,
     pill: 999
   },
   spacing: {
@@ -26,6 +33,6 @@ export const theme = {
     sm: 10,
     md: 16,
     lg: 22,
-    xl: 28
+    xl: 30
   }
 } as const;

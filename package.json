@@ -14,6 +14,8 @@
     "dev:mobile": "npm run docker:up:detached && npm run mobile",
     "dev:ios": "npm run docker:up:detached && npm run ios",
     "dev:android": "npm run docker:up:detached && npm run android",
+    "motoroom:api": "npm --prefix apps/motoroom-api run dev",
+    "motoroom:api:typecheck": "npm --prefix apps/motoroom-api run typecheck",
     "testflight:ios": "npm --prefix apps/mobile run testflight:ios",
     "typecheck": "npm --prefix apps/mobile run typecheck && npm --prefix apps/backend run typecheck"
   }

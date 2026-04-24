@@ -3,7 +3,7 @@ import { Ionicons } from '@expo/vector-icons';
 
 import { theme } from '../theme';
 
-export type AppTab = 'discover' | 'rooms' | 'rides';
+export type AppTab = 'discover' | 'rooms' | 'create' | 'garage';
 
 type BottomTabsProps = {
   activeTab: AppTab;
@@ -11,9 +11,10 @@ type BottomTabsProps = {
 };
 
 const tabs: { key: AppTab; label: string; icon: keyof typeof Ionicons.glyphMap }[] = [
-  { key: 'discover', label: 'Keşfet', icon: 'compass-outline' },
-  { key: 'rooms', label: 'Odalarım', icon: 'chatbubbles-outline' },
-  { key: 'rides', label: 'Buluşmalar', icon: 'map-outline' }
+  { key: 'discover', label: 'KEŞFET', icon: 'navigate-circle' },
+  { key: 'rooms', label: 'GRUPLAR', icon: 'people' },
+  { key: 'create', label: 'OLUŞTUR', icon: 'add-circle' },
+  { key: 'garage', label: 'GARAJ', icon: 'car-sport' }
 ];
 
 export const BottomTabs = ({ activeTab, onChange }: BottomTabsProps) => (
@@ -26,13 +27,9 @@ export const BottomTabs = ({ activeTab, onChange }: BottomTabsProps) => (
           key={tab.key}
           accessibilityRole="button"
           onPress={() => onChange(tab.key)}
-          style={({ pressed }) => [styles.tab, pressed && styles.tabPressed]}
+          style={({ pressed }) => [styles.tab, selected && styles.tabSelected, pressed && styles.tabPressed]}
         >
-          <Ionicons
-            name={tab.icon}
-            size={20}
-            color={selected ? theme.colors.accentDeep : theme.colors.tabIdle}
-          />
+          <Ionicons name={tab.icon} size={22} color={selected ? theme.colors.accent : theme.colors.tabIdle} />
           <Text style={[styles.label, selected && styles.labelSelected]}>{tab.label}</Text>
         </Pressable>
       );
@@ -42,29 +39,33 @@ export const BottomTabs = ({ activeTab, onChange }: BottomTabsProps) => (
 
 const styles = StyleSheet.create({
   container: {
+    minHeight: 82,
     flexDirection: 'row',
-    justifyContent: 'space-around',
-    alignItems: 'center',
-    backgroundColor: '#24170F',
-    paddingHorizontal: 12,
-    paddingTop: 14,
-    paddingBottom: 18,
-    borderTopLeftRadius: 28,
-    borderTopRightRadius: 28
+    alignItems: 'stretch',
+    borderTopWidth: 1,
+    borderTopColor: theme.colors.border,
+    backgroundColor: theme.colors.surface
   },
   tab: {
+    flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    minWidth: 88
+    borderTopWidth: 4,
+    borderTopColor: 'transparent'
+  },
+  tabSelected: {
+    borderTopColor: theme.colors.accent,
+    backgroundColor: '#18191B'
   },
   tabPressed: {
-    opacity: 0.82
+    opacity: 0.72
   },
   label: {
+    marginTop: 7,
     color: theme.colors.tabIdle,
-    fontSize: 12,
-    fontWeight: '700',
-    marginTop: 6
+    fontSize: 10,
+    fontWeight: '900',
+    letterSpacing: 1.5
   },
   labelSelected: {
     color: theme.colors.accent
